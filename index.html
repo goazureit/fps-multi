@@ -130,49 +130,47 @@
             }
 
             setupMultiplayer() {
-    // Auto-detect URL for local/prod
-    const socketUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '';
-    this.socket = io(socketUrl);
-    
-    this.socket.on('connect', () => {
-        this.myId = this.socket.id;
-        console.log('Connected:', this.myId);
-        // Add self as player
-        this.addPlayer(this.myId, { x: 0, y: 1.8, z: 0 });
-    });
+                // Connect to Render backend
+                this.socket = io('https://fps-multi.onrender.com', { transports: ['websocket'] });
+                
+                this.socket.on('connect', () => {
+                    this.myId = this.socket.id;
+                    console.log('Connected:', this.myId);
+                    this.addPlayer(this.myId, { x: 0, y: 1.8, z: 0 });
+                });
 
-    this.socket.on('playerJoined', (data) => {
-        if (data.id !== this.myId) {
-            this.addPlayer(data.id, data.position);
-        }
-    });
+                this.socket.on('playerJoined', (data) => {
+                    if (data.id !== this.myId) {
+                        this.addPlayer(data.id, data.position);
+                    }
+                });
 
-    this.socket.on('playerMoved', (data) => {
-        if (data.id !== this.myId) {
-            this.updatePlayer(data.id, data.position);
-        }
-    });
+                this.socket.on('playerMoved', (data) => {
+                    if (data.id !== this.myId) {
+                        this.updatePlayer(data.id, data.position);
+                    }
+                });
 
-    this.socket.on('playerLeft', (id) => {
-        this.removePlayer(id);
-    });
+                this.socket.on('playerLeft', (id) => {
+                    this.removePlayer(id);
+                });
 
-    // Send position every 50ms
-    setInterval(() => {
-        if (this.myId) {
-            this.socket.emit('move', {
-                id: this.myId,
-                position: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z }
-            });
-        }
-    }, 50);
-}
+                // Send position every 50ms
+                setInterval(() => {
+                    if (this.myId) {
+                        this.socket.emit('move', {
+                            id: this.myId,
+                            position: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z }
+                        });
+                    }
+                }, 50);
+            }
 
             addPlayer(id, position) {
                 const geometry = new THREE.CapsuleGeometry(0.3, 1.5);
                 const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
                 const mesh = new THREE.Mesh(geometry, material);
-                mesh.position.copy(position);
+                mesh.position.set(position.x, position.y, position.z);
                 this.scene.add(mesh);
                 this.players[id] = { mesh, position: new THREE.Vector3() };
                 document.getElementById('playerCount').textContent = Object.keys(this.players).length;
@@ -180,7 +178,7 @@
 
             updatePlayer(id, position) {
                 if (this.players[id]) {
-                    this.players[id].mesh.position.copy(position);
+                    this.players[id].mesh.position.set(position.x, position.y, position.z);
                 }
             }
 
