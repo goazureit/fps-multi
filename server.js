@@ -28,9 +28,8 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('playerMoved', data);
     });
 
-    // NEW: Handle hit events
     socket.on('hit', (data) => {
-        io.emit('hit', data); // Broadcast hit to all clients
+        io.emit('hit', data);
     });
 
     socket.on('disconnect', () => {

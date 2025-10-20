@@ -52,15 +52,15 @@
                 this.clock = new THREE.Clock();
                 
                 // Game state
-                this.players = {}; // {id: {mesh, position, health}}
+                this.players = {};
                 this.myId = null;
                 this.keys = {};
                 this.velocity = new THREE.Vector3();
                 this.direction = new THREE.Vector3();
                 this.isMobile = /Android|iPhone/i.test(navigator.userAgent);
-                this.health = 100; // NEW: Player health
-                this.canShoot = true; // NEW: Fire rate control
-                this.raycaster = new THREE.Raycaster(); // NEW: For shooting
+                this.health = 100;
+                this.canShoot = true;
+                this.raycaster = new THREE.Raycaster();
                 
                 this.init();
                 this.setupControls();
@@ -69,47 +69,38 @@
             }
 
             init() {
-                // Renderer setup
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
                 this.renderer.setClearColor(0x87CEEB);
                 document.getElementById('container').appendChild(this.renderer.domElement);
 
-                // Lighting
                 const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
                 this.scene.add(ambientLight);
                 const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
                 directionalLight.position.set(50, 50, 50);
                 this.scene.add(directionalLight);
 
-                // Ground
                 const groundGeo = new THREE.PlaneGeometry(100, 100);
                 const groundMat = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
                 const ground = new THREE.Mesh(groundGeo, groundMat);
                 ground.rotation.x = -Math.PI / 2;
                 this.scene.add(ground);
 
-                // Start position
                 this.camera.position.set(0, 1.8, 0);
-
-                // Handle resize
                 window.addEventListener('resize', () => this.onWindowResize());
             }
 
             setupControls() {
-                // Pointer lock for desktop
                 this.renderer.domElement.addEventListener('click', () => {
                     this.renderer.domElement.requestPointerLock();
-                    if (this.canShoot) this.shoot(); // NEW: Shoot on click
+                    if (this.canShoot) this.shoot();
                 });
 
-                // Keyboard
                 document.addEventListener('keydown', (e) => {
                     this.keys[e.code] = true;
                     if (e.code === 'Space') e.preventDefault();
                 });
                 document.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
-                // Mouse/Touch look
                 let mouseX = 0, mouseY = 0;
                 let touchStartX = 0, touchStartY = 0;
 
@@ -123,7 +114,6 @@
                         }
                     });
                 } else {
-                    // Mobile touch for look
                     this.renderer.domElement.addEventListener('touchstart', (e) => {
                         touchStartX = e.touches[0].clientX;
                         touchStartY = e.touches[0].clientY;
@@ -139,7 +129,6 @@
                         touchStartX = e.touches[0].clientX;
                         touchStartY = e.touches[0].clientY;
                     });
-                    // NEW: Tap to shoot
                     this.renderer.domElement.addEventListener('touchend', () => {
                         if (this.canShoot) this.shoot();
                     });
@@ -156,22 +145,24 @@
                 });
 
                 this.socket.on('playerJoined', (data) => {
+                    console.log('Player joined:', data.id, data.position); // DEBUG
                     if (data.id !== this.myId) {
                         this.addPlayer(data.id, data.position);
                     }
                 });
 
                 this.socket.on('playerMoved', (data) => {
+                    console.log('Player moved:', data.id, data.position); // DEBUG
                     if (data.id !== this.myId) {
                         this.updatePlayer(data.id, data.position);
                     }
                 });
 
                 this.socket.on('playerLeft', (id) => {
+                    console.log('Player left:', id); // DEBUG
                     this.removePlayer(id);
                 });
 
-                // NEW: Handle hits
                 this.socket.on('hit', (data) => {
                     if (data.targetId === this.myId) {
                         this.health = Math.max(0, this.health - data.damage);
@@ -182,7 +173,6 @@
                     }
                 });
 
-                // Send position every 50ms
                 setInterval(() => {
                     if (this.myId) {
                         this.socket.emit('move', {
@@ -193,13 +183,11 @@
                 }, 50);
             }
 
-            // NEW: Shooting logic
             shoot() {
                 if (!this.canShoot) return;
                 this.canShoot = false;
-                setTimeout(() => this.canShoot = true, 500); // Fire rate: 2 shots/sec
+                setTimeout(() => this.canShoot = true, 500);
 
-                // Muzzle flash
                 const flashGeo = new THREE.SphereGeometry(0.1, 8, 8);
                 const flashMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
                 const flash = new THREE.Mesh(flashGeo, flashMat);
@@ -208,7 +196,6 @@
                 this.scene.add(flash);
                 setTimeout(() => this.scene.remove(flash), 100);
 
-                // Raycast for hit detection
                 this.raycaster.set(this.camera.position, this.camera.getWorldDirection(new THREE.Vector3()));
                 const intersects = this.raycaster.intersectObjects(
                     Object.values(this.players).map(p => p.mesh).filter(m => m !== undefined),
@@ -223,7 +210,6 @@
                         const [targetId] = hitPlayer;
                         this.socket.emit('hit', { targetId, damage: 20 });
 
-                        // Hit effect
                         const hitGeo = new THREE.SphereGeometry(0.2, 8, 8);
                         const hitMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
                         const hitEffect = new THREE.Mesh(hitGeo, hitMat);
@@ -234,7 +220,6 @@
                 }
             }
 
-            // NEW: Respawn logic
             respawn() {
                 this.health = 100;
                 document.getElementById('health-fill').style.width = '100%';
@@ -250,6 +235,7 @@
                 this.scene.add(mesh);
                 this.players[id] = { mesh, position: new THREE.Vector3(), health: 100 };
                 document.getElementById('playerCount').textContent = Object.keys(this.players).length;
+                console.log('Added player:', id, 'Total players:', Object.keys(this.players).length); // DEBUG
             }
 
             updatePlayer(id, position) {
@@ -278,12 +264,10 @@
                     this.velocity.x -= this.direction.x * speed * delta;
                 }
 
-                // Jump
                 if (this.keys['Space'] && Math.abs(this.velocity.y) < 0.01) {
                     this.velocity.y = 8;
                 }
 
-                // Gravity
                 this.velocity.y -= 20 * delta;
                 this.camera.position.add(this.velocity.clone().multiplyScalar(delta));
                 this.camera.position.y = Math.max(1.8, this.camera.position.y);
@@ -303,7 +287,6 @@
             }
         }
 
-        // Start the game!
         window.addEventListener('load', () => new FPSGame());
     </script>
 </body>
