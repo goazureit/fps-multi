@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer FPS - Three.js</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial; }
+        #container { position: relative; width: 100vw; height: 100vh; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; z-index: 100; }
+        #crosshair { 
+            position: absolute; top: 50%; left: 50%; 
+            width: 20px; height: 20px; 
+            transform: translate(-50%, -50%);
+            pointer-events: none; z-index: 100;
+            border: 2px solid white; border-radius: 50%;
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="ui">
+            <div>WASD/Move | Mouse/Touch: Look | SPACE: Jump</div>
+            <div>Players Online: <span id="playerCount">1</span></div>
+        </div>
+        <div id="crosshair"></div>
+    </div>
+
+    <!-- Three.js + Controls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    
+    <!-- Socket.io for multiplayer -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <script>
+        class FPSGame {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.clock = new THREE.Clock();
+                
+                // Game state
+                this.players = {}; // {id: {mesh, position, velocity}}
+                this.myId = null;
+                this.keys = {};
+                this.velocity = new THREE.Vector3();
+                this.direction = new THREE.Vector3();
+                this.isMobile = /Android|iPhone/i.test(navigator.userAgent);
+                
+                this.init();
+                this.setupControls();
+                this.setupMultiplayer();
+                this.animate();
+            }
+
+            init() {
+                // Renderer setup
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x87CEEB); // Sky blue
+                document.getElementById('container').appendChild(this.renderer.domElement);
+
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                this.scene.add(ambientLight);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(50, 50, 50);
+                this.scene.add(directionalLight);
+
+                // Ground
+                const groundGeo = new THREE.PlaneGeometry(100, 100);
+                const groundMat = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
+                const ground = new THREE.Mesh(groundGeo, groundMat);
+                ground.rotation.x = -Math.PI / 2;
+                this.scene.add(ground);
+
+                // Start position
+                this.camera.position.set(0, 1.8, 0);
+
+                // Handle resize
+                window.addEventListener('resize', () => this.onWindowResize());
+            }
+
+            setupControls() {
+                // Pointer lock for desktop
+                this.renderer.domElement.addEventListener('click', () => {
+                    this.renderer.domElement.requestPointerLock();
+                });
+
+                // Keyboard
+                document.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    if (e.code === 'Space') e.preventDefault();
+                });
+                document.addEventListener('keyup', (e) => this.keys[e.code] = false);
+
+                // Mouse/Touch look
+                let mouseX = 0, mouseY = 0;
+                let touchStartX = 0, touchStartY = 0;
+
+                if (!this.isMobile) {
+                    document.addEventListener('mousemove', (e) => {
+                        if (document.pointerLockElement) {
+                            mouseX -= e.movementX * 0.002;
+                            mouseY -= e.movementY * 0.002;
+                            mouseY = Math.max(-Math.PI/2, Math.min(Math.PI/2, mouseY));
+                            this.camera.rotation.set(mouseY, mouseX, 0);
+                        }
+                    });
+                } else {
+                    // Mobile touch
+                    this.renderer.domElement.addEventListener('touchstart', (e) => {
+                        touchStartX = e.touches[0].clientX;
+                        touchStartY = e.touches[0].clientY;
+                    });
+                    this.renderer.domElement.addEventListener('touchmove', (e) => {
+                        e.preventDefault();
+                        const deltaX = e.touches[0].clientX - touchStartX;
+                        const deltaY = e.touches[0].clientY - touchStartY;
+                        mouseX -= deltaX * 0.005;
+                        mouseY -= deltaY * 0.005;
+                        mouseY = Math.max(-Math.PI/2, Math.min(Math.PI/2, mouseY));
+                        this.camera.rotation.set(mouseY, mouseX, 0);
+                        touchStartX = e.touches[0].clientX;
+                        touchStartY = e.touches[0].clientY;
+                    });
+                }
+            }
+
+            setupMultiplayer() {
+                this.socket = io('http://localhost:3000'); // We'll set up server next
+                
+                this.socket.on('connect', () => {
+                    this.myId = this.socket.id;
+                    console.log('Connected:', this.myId);
+                });
+
+                this.socket.on('playerJoined', (data) => {
+                    this.addPlayer(data.id, data.position);
+                });
+
+                this.socket.on('playerMoved', (data) => {
+                    if (data.id !== this.myId) {
+                        this.updatePlayer(data.id, data.position);
+                    }
+                });
+
+                this.socket.on('playerLeft', (id) => {
+                    this.removePlayer(id);
+                });
+
+                // Send position every 50ms
+                setInterval(() => {
+                    if (this.myId) {
+                        this.socket.emit('move', {
+                            id: this.myId,
+                            position: this.camera.position
+                        });
+                    }
+                }, 50);
+            }
+
+            addPlayer(id, position) {
+                const geometry = new THREE.CapsuleGeometry(0.3, 1.5);
+                const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.copy(position);
+                this.scene.add(mesh);
+                this.players[id] = { mesh, position: new THREE.Vector3() };
+                document.getElementById('playerCount').textContent = Object.keys(this.players).length;
+            }
+
+            updatePlayer(id, position) {
+                if (this.players[id]) {
+                    this.players[id].mesh.position.copy(position);
+                }
+            }
+
+            removePlayer(id) {
+                if (this.players[id]) {
+                    this.scene.remove(this.players[id].mesh);
+                    delete this.players[id];
+                    document.getElementById('playerCount').textContent = Object.keys(this.players).length;
+                }
+            }
+
+            updateMovement(delta) {
+                this.velocity.set(0, this.velocity.y, 0);
+                this.direction.z = Number(this.keys['KeyW']) - Number(this.keys['KeyS']);
+                this.direction.x = Number(this.keys['KeyD']) - Number(this.keys['KeyA']);
+                this.direction.normalize();
+
+                if (this.keys['KeyW'] || this.keys['KeyS'] || this.keys['KeyA'] || this.keys['KeyD']) {
+                    const speed = 5;
+                    this.velocity.z -= this.direction.z * speed * delta;
+                    this.velocity.x -= this.direction.x * speed * delta;
+                }
+
+                // Jump
+                if (this.keys['Space'] && Math.abs(this.velocity.y) < 0.01) {
+                    this.velocity.y = 8;
+                }
+
+                // Gravity
+                this.velocity.y -= 20 * delta;
+                this.camera.position.add(this.velocity.clone().multiplyScalar(delta));
+                this.camera.position.y = Math.max(1.8, this.camera.position.y);
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                const delta = this.clock.getDelta();
+                this.updateMovement(delta);
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+
+        // Start the game!
+        window.addEventListener('load', () => new FPSGame());
+    </script>
+</body>
+</html>
