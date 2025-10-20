@@ -6,7 +6,7 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }  // Allow all origins for dev
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 app.use(express.static(path.join(__dirname)));
@@ -14,13 +14,11 @@ app.use(express.static(path.join(__dirname)));
 io.on('connection', (socket) => {
     console.log('Player connected:', socket.id);
     
-    // Send initial position
     socket.emit('playerJoined', {
         id: socket.id,
         position: { x: 0, y: 1.8, z: 0 }
     });
     
-    // Notify others
     socket.broadcast.emit('playerJoined', {
         id: socket.id,
         position: { x: 0, y: 1.8, z: 0 }
@@ -28,6 +26,11 @@ io.on('connection', (socket) => {
 
     socket.on('move', (data) => {
         socket.broadcast.emit('playerMoved', data);
+    });
+
+    // NEW: Handle hit events
+    socket.on('hit', (data) => {
+        io.emit('hit', data); // Broadcast hit to all clients
     });
 
     socket.on('disconnect', () => {

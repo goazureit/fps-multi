@@ -15,16 +15,25 @@
             pointer-events: none; z-index: 100;
             border: 2px solid white; border-radius: 50%;
         }
+        #health-bar { 
+            position: absolute; bottom: 10px; left: 10px; 
+            width: 200px; height: 20px; background: #222; 
+            border: 2px solid white; z-index: 100; 
+        }
+        #health-fill { 
+            height: 100%; background: #ff4444; transition: width 0.2s; 
+        }
         canvas { display: block; }
     </style>
 </head>
 <body>
     <div id="container">
         <div id="ui">
-            <div>WASD/Move | Mouse/Touch: Look | SPACE: Jump</div>
+            <div>WASD/Move | Mouse/Touch: Look | SPACE: Jump | Click/Tap: Shoot</div>
             <div>Players Online: <span id="playerCount">1</span></div>
         </div>
         <div id="crosshair"></div>
+        <div id="health-bar"><div id="health-fill" style="width: 100%"></div></div>
     </div>
 
     <!-- Three.js + Controls -->
@@ -43,12 +52,15 @@
                 this.clock = new THREE.Clock();
                 
                 // Game state
-                this.players = {}; // {id: {mesh, position, velocity}}
+                this.players = {}; // {id: {mesh, position, health}}
                 this.myId = null;
                 this.keys = {};
                 this.velocity = new THREE.Vector3();
                 this.direction = new THREE.Vector3();
                 this.isMobile = /Android|iPhone/i.test(navigator.userAgent);
+                this.health = 100; // NEW: Player health
+                this.canShoot = true; // NEW: Fire rate control
+                this.raycaster = new THREE.Raycaster(); // NEW: For shooting
                 
                 this.init();
                 this.setupControls();
@@ -59,7 +71,7 @@
             init() {
                 // Renderer setup
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setClearColor(0x87CEEB); // Sky blue
+                this.renderer.setClearColor(0x87CEEB);
                 document.getElementById('container').appendChild(this.renderer.domElement);
 
                 // Lighting
@@ -87,6 +99,7 @@
                 // Pointer lock for desktop
                 this.renderer.domElement.addEventListener('click', () => {
                     this.renderer.domElement.requestPointerLock();
+                    if (this.canShoot) this.shoot(); // NEW: Shoot on click
                 });
 
                 // Keyboard
@@ -110,7 +123,7 @@
                         }
                     });
                 } else {
-                    // Mobile touch
+                    // Mobile touch for look
                     this.renderer.domElement.addEventListener('touchstart', (e) => {
                         touchStartX = e.touches[0].clientX;
                         touchStartY = e.touches[0].clientY;
@@ -126,11 +139,14 @@
                         touchStartX = e.touches[0].clientX;
                         touchStartY = e.touches[0].clientY;
                     });
+                    // NEW: Tap to shoot
+                    this.renderer.domElement.addEventListener('touchend', () => {
+                        if (this.canShoot) this.shoot();
+                    });
                 }
             }
 
             setupMultiplayer() {
-                // Connect to Render backend
                 this.socket = io('https://fps-multi.onrender.com', { transports: ['websocket'] });
                 
                 this.socket.on('connect', () => {
@@ -155,6 +171,17 @@
                     this.removePlayer(id);
                 });
 
+                // NEW: Handle hits
+                this.socket.on('hit', (data) => {
+                    if (data.targetId === this.myId) {
+                        this.health = Math.max(0, this.health - data.damage);
+                        document.getElementById('health-fill').style.width = `${this.health}%`;
+                        if (this.health <= 0) {
+                            this.respawn();
+                        }
+                    }
+                });
+
                 // Send position every 50ms
                 setInterval(() => {
                     if (this.myId) {
@@ -166,13 +193,62 @@
                 }, 50);
             }
 
+            // NEW: Shooting logic
+            shoot() {
+                if (!this.canShoot) return;
+                this.canShoot = false;
+                setTimeout(() => this.canShoot = true, 500); // Fire rate: 2 shots/sec
+
+                // Muzzle flash
+                const flashGeo = new THREE.SphereGeometry(0.1, 8, 8);
+                const flashMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const flash = new THREE.Mesh(flashGeo, flashMat);
+                flash.position.copy(this.camera.position);
+                flash.position.add(this.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.5));
+                this.scene.add(flash);
+                setTimeout(() => this.scene.remove(flash), 100);
+
+                // Raycast for hit detection
+                this.raycaster.set(this.camera.position, this.camera.getWorldDirection(new THREE.Vector3()));
+                const intersects = this.raycaster.intersectObjects(
+                    Object.values(this.players).map(p => p.mesh).filter(m => m !== undefined),
+                    false
+                );
+
+                if (intersects.length > 0) {
+                    const hitPlayer = Object.entries(this.players).find(
+                        ([id, player]) => player.mesh === intersects[0].object
+                    );
+                    if (hitPlayer) {
+                        const [targetId] = hitPlayer;
+                        this.socket.emit('hit', { targetId, damage: 20 });
+
+                        // Hit effect
+                        const hitGeo = new THREE.SphereGeometry(0.2, 8, 8);
+                        const hitMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                        const hitEffect = new THREE.Mesh(hitGeo, hitMat);
+                        hitEffect.position.copy(intersects[0].point);
+                        this.scene.add(hitEffect);
+                        setTimeout(() => this.scene.remove(hitEffect), 100);
+                    }
+                }
+            }
+
+            // NEW: Respawn logic
+            respawn() {
+                this.health = 100;
+                document.getElementById('health-fill').style.width = '100%';
+                this.camera.position.set(0, 1.8, 0);
+                this.velocity.set(0, 0, 0);
+            }
+
             addPlayer(id, position) {
                 const geometry = new THREE.CapsuleGeometry(0.3, 1.5);
                 const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
                 const mesh = new THREE.Mesh(geometry, material);
                 mesh.position.set(position.x, position.y, position.z);
                 this.scene.add(mesh);
-                this.players[id] = { mesh, position: new THREE.Vector3() };
+                this.players[id] = { mesh, position: new THREE.Vector3(), health: 100 };
                 document.getElementById('playerCount').textContent = Object.keys(this.players).length;
             }
 
