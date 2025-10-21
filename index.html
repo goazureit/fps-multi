@@ -136,12 +136,17 @@
             }
 
             setupMultiplayer() {
+                console.log('Connecting to server: https://fps-multi.onrender.com');
                 this.socket = io('https://fps-multi.onrender.com', { transports: ['websocket'] });
                 
                 this.socket.on('connect', () => {
                     this.myId = this.socket.id;
                     console.log('Connected:', this.myId);
                     this.addPlayer(this.myId, { x: 0, y: 1.8, z: 0 });
+                });
+
+                this.socket.on('connect_error', (error) => {
+                    console.error('Connection error:', error.message);
                 });
 
                 this.socket.on('playerJoined', (data) => {
@@ -228,7 +233,7 @@
             }
 
             addPlayer(id, position) {
-                const geometry = new THREE.BoxGeometry(1, 1.8, 1); // CHANGED: Box instead of Capsule
+                const geometry = new THREE.BoxGeometry(1, 1.8, 1);
                 const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
                 const mesh = new THREE.Mesh(geometry, material);
                 mesh.position.set(position.x, position.y, position.z);
@@ -287,7 +292,10 @@
             }
         }
 
-        window.addEventListener('load', () => new FPSGame());
+        window.addEventListener('load', () => {
+            console.log('Game initializing...');
+            new FPSGame();
+        });
     </script>
 </body>
 </html>

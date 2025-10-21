@@ -12,7 +12,7 @@ const io = socketIo(server, {
 app.use(express.static(path.join(__dirname)));
 
 io.on('connection', (socket) => {
-    console.log('Player connected:', socket.id);
+    console.log('Player connected:', socket.id, 'at', new Date().toISOString());
     
     socket.emit('playerJoined', {
         id: socket.id,
@@ -25,10 +25,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('move', (data) => {
+        console.log('Move received:', data.id, data.position);
         socket.broadcast.emit('playerMoved', data);
     });
 
     socket.on('hit', (data) => {
+        console.log('Hit received:', data);
         io.emit('hit', data);
     });
 
