@@ -23,6 +23,15 @@
         #health-fill { 
             height: 100%; background: #ff4444; transition: width 0.2s; 
         }
+        #game-over { 
+            display: none; position: absolute; top: 0; left: 0; 
+            width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.8); 
+            color: white; text-align: center; font-size: 48px; z-index: 200; 
+            flex-direction: column; justify-content: center; align-items: center; 
+        }
+        #game-over button { 
+            font-size: 24px; padding: 10px 20px; margin-top: 20px; cursor: pointer; 
+        }
         canvas { display: block; }
     </style>
 </head>
@@ -34,6 +43,10 @@
         </div>
         <div id="crosshair"></div>
         <div id="health-bar"><div id="health-fill" style="width: 100%"></div></div>
+        <div id="game-over">
+            <div>Game Over</div>
+            <button onclick="location.reload()">Respawn</button>
+        </div>
     </div>
 
     <!-- Three.js + Controls -->
@@ -61,7 +74,7 @@
                 this.health = 100;
                 this.canShoot = true;
                 this.raycaster = new THREE.Raycaster();
-                this.isGrounded = true; // NEW: Track if player is on ground
+                this.isGrounded = true;
                 
                 this.init();
                 this.setupControls();
@@ -174,7 +187,13 @@
                         this.health = Math.max(0, this.health - data.damage);
                         document.getElementById('health-fill').style.width = `${this.health}%`;
                         if (this.health <= 0) {
-                            this.respawn();
+                            this.gameOver();
+                        }
+                    } else {
+                        // Update other player's health
+                        if (this.players[data.targetId]) {
+                            this.players[data.targetId].health = Math.max(0, this.players[data.targetId].health - data.damage);
+                            this.updateHealthBar(data.targetId);
                         }
                     }
                 });
@@ -187,6 +206,31 @@
                         });
                     }
                 }, 50);
+            }
+
+            createHealthBar() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 32;
+                const context = canvas.getContext('2d');
+                return { canvas, context };
+            }
+
+            updateHealthBar(id) {
+                const player = this.players[id];
+                if (!player || !player.healthBar) return;
+
+                const { context } = player.healthBar;
+                const healthPercent = player.health / 100;
+                const color = healthPercent <= 0.25 ? `rgb(${255 * (1 - healthPercent / 0.25)}, ${255 * healthPercent / 0.25}, 0)` : `rgb(0, 255, 0)`;
+
+                context.clearRect(0, 0, 128, 32);
+                context.fillStyle = '#222';
+                context.fillRect(0, 0, 128, 32);
+                context.fillStyle = color;
+                context.fillRect(2, 2, 124 * healthPercent, 28);
+
+                player.healthBar.texture.needsUpdate = true;
             }
 
             shoot() {
@@ -226,6 +270,13 @@
                 }
             }
 
+            gameOver() {
+                document.getElementById('game-over').style.display = 'flex';
+                this.socket.disconnect();
+                this.canShoot = false;
+                this.keys = {};
+            }
+
             respawn() {
                 this.health = 100;
                 document.getElementById('health-fill').style.width = '100%';
@@ -243,7 +294,18 @@
                 console.log('Mesh created for', id, 'at', mesh.position);
                 this.scene.add(mesh);
                 console.log('Mesh added to scene for', id);
-                this.players[id] = { mesh, position: new THREE.Vector3(position.x, position.y, position.z), health: 100 };
+
+                // Add health bar
+                const { canvas, context } = this.createHealthBar();
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const healthBar = new THREE.Sprite(spriteMaterial);
+                healthBar.position.set(0, 2.8, 0); // Above player (1.8 + 1)
+                healthBar.scale.set(1, 0.25, 1);
+                mesh.add(healthBar); // Attach to player mesh
+
+                this.players[id] = { mesh, position: new THREE.Vector3(position.x, position.y, position.z), health: 100, healthBar: { canvas, context, texture } };
+                this.updateHealthBar(id);
                 document.getElementById('playerCount').textContent = Object.keys(this.players).length;
                 console.log('Added player:', id, 'Total players:', Object.keys(this.players).length);
             }
@@ -297,7 +359,7 @@
                 }
 
                 // Apply gravity
-                this.velocity.y -= 10 * delta; // Reduced gravity
+                this.velocity.y -= 10 * delta;
                 this.camera.position.add(this.velocity.clone().multiplyScalar(delta));
 
                 // Floor collision
