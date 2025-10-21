@@ -61,6 +61,7 @@
                 this.health = 100;
                 this.canShoot = true;
                 this.raycaster = new THREE.Raycaster();
+                this.isGrounded = true; // NEW: Track if player is on ground
                 
                 this.init();
                 this.setupControls();
@@ -230,6 +231,7 @@
                 document.getElementById('health-fill').style.width = '100%';
                 this.camera.position.set(0, 1.8, 0);
                 this.velocity.set(0, 0, 0);
+                this.isGrounded = true;
             }
 
             addPlayer(id, position) {
@@ -267,23 +269,43 @@
 
             updateMovement(delta) {
                 this.velocity.set(0, this.velocity.y, 0);
-                this.direction.z = Number(this.keys['KeyW']) - Number(this.keys['KeyS']);
-                this.direction.x = Number(this.keys['KeyD']) - Number(this.keys['KeyA']);
+
+                // Align movement with camera direction
+                const forward = new THREE.Vector3();
+                this.camera.getWorldDirection(forward);
+                forward.y = 0;
+                forward.normalize();
+                const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0));
+
+                this.direction.set(0, 0, 0);
+                if (this.keys['KeyW']) this.direction.add(forward);
+                if (this.keys['KeyS']) this.direction.sub(forward);
+                if (this.keys['KeyD']) this.direction.add(right);
+                if (this.keys['KeyA']) this.direction.sub(right);
                 this.direction.normalize();
 
                 if (this.keys['KeyW'] || this.keys['KeyS'] || this.keys['KeyA'] || this.keys['KeyD']) {
                     const speed = 5;
-                    this.velocity.z -= this.direction.z * speed * delta;
-                    this.velocity.x -= this.direction.x * speed * delta;
+                    this.velocity.x = this.direction.x * speed;
+                    this.velocity.z = this.direction.z * speed;
                 }
 
-                if (this.keys['Space'] && Math.abs(this.velocity.y) < 0.01) {
+                // Jump only if grounded
+                if (this.keys['Space'] && this.isGrounded) {
                     this.velocity.y = 8;
+                    this.isGrounded = false;
                 }
 
-                this.velocity.y -= 20 * delta;
+                // Apply gravity
+                this.velocity.y -= 10 * delta; // Reduced gravity
                 this.camera.position.add(this.velocity.clone().multiplyScalar(delta));
-                this.camera.position.y = Math.max(1.8, this.camera.position.y);
+
+                // Floor collision
+                if (this.camera.position.y <= 1.8) {
+                    this.camera.position.y = 1.8;
+                    this.velocity.y = 0;
+                    this.isGrounded = true;
+                }
             }
 
             animate() {
