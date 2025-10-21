@@ -233,24 +233,32 @@
             }
 
             addPlayer(id, position) {
+                console.log('Adding player:', id, 'at position:', position);
                 const geometry = new THREE.BoxGeometry(1, 1.8, 1);
                 const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
                 const mesh = new THREE.Mesh(geometry, material);
-                mesh.position.set(position.x, position.y, position.z);
+                mesh.position.set(position.x + Math.random() * 2 - 1, position.y, position.z + Math.random() * 2 - 1);
+                console.log('Mesh created for', id, 'at', mesh.position);
                 this.scene.add(mesh);
-                this.players[id] = { mesh, position: new THREE.Vector3(), health: 100 };
+                console.log('Mesh added to scene for', id);
+                this.players[id] = { mesh, position: new THREE.Vector3(position.x, position.y, position.z), health: 100 };
                 document.getElementById('playerCount').textContent = Object.keys(this.players).length;
                 console.log('Added player:', id, 'Total players:', Object.keys(this.players).length);
             }
 
             updatePlayer(id, position) {
                 if (this.players[id]) {
+                    console.log('Updating position for', id, 'to', position);
                     this.players[id].mesh.position.set(position.x, position.y, position.z);
+                    this.players[id].position.set(position.x, position.y, position.z);
+                } else {
+                    console.log('Player not found for update:', id);
                 }
             }
 
             removePlayer(id) {
                 if (this.players[id]) {
+                    console.log('Removing player:', id);
                     this.scene.remove(this.players[id].mesh);
                     delete this.players[id];
                     document.getElementById('playerCount').textContent = Object.keys(this.players).length;
