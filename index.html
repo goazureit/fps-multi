@@ -145,21 +145,21 @@
                 });
 
                 this.socket.on('playerJoined', (data) => {
-                    console.log('Player joined:', data.id, data.position); // DEBUG
+                    console.log('Player joined:', data.id, data.position);
                     if (data.id !== this.myId) {
                         this.addPlayer(data.id, data.position);
                     }
                 });
 
                 this.socket.on('playerMoved', (data) => {
-                    console.log('Player moved:', data.id, data.position); // DEBUG
+                    console.log('Player moved:', data.id, data.position);
                     if (data.id !== this.myId) {
                         this.updatePlayer(data.id, data.position);
                     }
                 });
 
                 this.socket.on('playerLeft', (id) => {
-                    console.log('Player left:', id); // DEBUG
+                    console.log('Player left:', id);
                     this.removePlayer(id);
                 });
 
@@ -228,14 +228,14 @@
             }
 
             addPlayer(id, position) {
-                const geometry = new THREE.CapsuleGeometry(0.3, 1.5);
+                const geometry = new THREE.BoxGeometry(1, 1.8, 1); // CHANGED: Box instead of Capsule
                 const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
                 const mesh = new THREE.Mesh(geometry, material);
                 mesh.position.set(position.x, position.y, position.z);
                 this.scene.add(mesh);
                 this.players[id] = { mesh, position: new THREE.Vector3(), health: 100 };
                 document.getElementById('playerCount').textContent = Object.keys(this.players).length;
-                console.log('Added player:', id, 'Total players:', Object.keys(this.players).length); // DEBUG
+                console.log('Added player:', id, 'Total players:', Object.keys(this.players).length);
             }
 
             updatePlayer(id, position) {
